@@ -14,6 +14,7 @@ from llama_cloud import AsyncLlamaCloud
 
 from config.settings import settings
 from src.utils.logger import get_logger
+from src.utils.file_utils import download_image, ensure_dir, DIAGRAMS_DIR
 
 logger = get_logger(__name__)
 
@@ -26,12 +27,14 @@ async def parse_single_pdf(client: AsyncLlamaCloud, pdf_path: Path) -> Dict:
     """
     Upload and parse a single PDF via LlamaCloud.
 
+    Downloads any images/diagrams found in the document.
+
     Args:
         client:   Authenticated AsyncLlamaCloud client.
         pdf_path: Path to the PDF file on disk.
 
     Returns:
-        Dict with 'filename' and 'markdown' content from parsing.
+        Dict with 'filename', 'markdown' content, and 'images' (list of saved paths).
     """
     logger.info(f"Uploading: {pdf_path.name}")
 
@@ -42,12 +45,15 @@ async def parse_single_pdf(client: AsyncLlamaCloud, pdf_path: Path) -> Dict:
     )
     logger.info(f"Uploaded {pdf_path.name} → file_id: {file_obj.id}")
 
-    # Step 2: Parse the uploaded file
+    # Step 2: Parse the uploaded file — request both markdown and image metadata
     result = await client.parsing.parse(
         file_id=file_obj.id,
         tier="agentic",         # good balance of accuracy and structure
         version="latest",
-        expand=["markdown"],    # we only need markdown content for extraction
+        output_options={
+            "images_to_save": ["screenshot"],  # capture page screenshots and embedded images
+        },
+        expand=["markdown", "images_content_metadata"],
     )
     logger.info(f"Parsed {pdf_path.name} successfully")
 
@@ -56,9 +62,29 @@ async def parse_single_pdf(client: AsyncLlamaCloud, pdf_path: Path) -> Dict:
         page.markdown for page in result.markdown.pages
     )
 
+    # Step 4: Download any images/diagrams found in the document
+    saved_images = []
+    if result.images_content_metadata and result.images_content_metadata.images:
+        # Create a subfolder per PDF to keep images organized
+        pdf_stem = pdf_path.stem  # e.g. "psc_questions_2024"
+        image_dir = DIAGRAMS_DIR / pdf_stem
+        ensure_dir(image_dir)
+
+        for image in result.images_content_metadata.images:
+            if image.presigned_url is None:
+                continue
+
+            save_path = image_dir / image.filename
+            success = await download_image(image.presigned_url, save_path)
+            if success:
+                saved_images.append(str(save_path))
+
+        logger.info(f"Downloaded {len(saved_images)} image(s) for {pdf_path.name}")
+
     return {
         "filename": pdf_path.name,
         "markdown": full_markdown,
+        "images": saved_images,  # list of local file paths to downloaded images
     }
 
 
