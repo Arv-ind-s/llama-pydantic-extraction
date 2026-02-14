@@ -1,5 +1,5 @@
-# LlamaParse — AI-powered PDF parsing
-llama-parse>=0.5
+# LlamaCloud SDK — async PDF parsing via LlamaCloud API
+llama-cloud>=1.0
 
 # Pydantic — schema validation & settings management
 pydantic>=2.0
