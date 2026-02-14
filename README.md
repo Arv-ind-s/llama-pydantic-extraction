@@ -61,8 +61,10 @@ cp .env.example .env
 
 ```env
 LLAMA_CLOUD_API_KEY=llx-your-key-here
-BATCH_SIZE=10
-MAX_CONCURRENT_REQUESTS=5
+BATCH_SIZE=5
+MAX_RETRIES=3
+TIMEOUT=300
+LOG_LEVEL=INFO
 ```
 
 Additional settings can be tuned in `config/settings.py`.

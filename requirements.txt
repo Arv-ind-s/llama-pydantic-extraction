@@ -1,0 +1,19 @@
+# LlamaParse — AI-powered PDF parsing
+llama-parse>=0.5
+
+# Pydantic — schema validation & settings management
+pydantic>=2.0
+pydantic-settings>=2.0
+
+# Async & HTTP
+aiohttp>=3.9
+aiofiles>=23.0
+
+# Utilities
+python-dotenv>=1.0
+tqdm>=4.66
+tenacity>=8.2
+
+# Dev & Testing
+pytest>=7.0
+pytest-asyncio>=0.23
