@@ -6,33 +6,75 @@ Production-ready pipeline for extracting structured data from large PDF corpora.
 
 ## Features
 
-- **AI-Powered Parsing** — LlamaCloud handles complex PDF layouts, tables, and mixed content
-- **Schema-Driven Extraction** — Define what you need with Pydantic models; get validated, typed output
-- **Async & Batch Processing** — Process hundreds of PDFs concurrently with built-in rate limiting
-- **Extensible Architecture** — Plug in custom extractors, parsers, and schemas for any document type
-- **Robust Error Handling** — Retries, detailed logging, and graceful failure modes
+- **AI-Powered Parsing** — LlamaCloud handles complex PDF layouts, tables, and mixed content.
+- **Schema-Driven Extraction** — Define what you need with Pydantic models; get validated, typed output.
+- **Async & Batch Processing** — Process hundreds of PDFs concurrently with built-in rate limiting.
+- **Diagram Integration** — Automatically downloads and links diagrams/images to specific questions.
+- **Robust Error Handling** — Retries with exponential backoff, detailed logging, and graceful failure modes.
+
+## Project Architecture
+
+```mermaid
+graph TD
+    subgraph Input
+        A[PDF Files in data/input/new/]
+    end
+
+    subgraph "Parsing Phase (LlamaCloud)"
+        B[AsyncLlamaCloud Client]
+        C[Agentic PDF Parsing]
+        D[Image/Diagram Extraction]
+    end
+
+    subgraph "Extraction Phase (GPT-4o)"
+        E[Markdown Content]
+        F[Schema-Aware Prompting]
+        G[LLM Structured Extraction]
+    end
+
+    subgraph "Validation & Linking"
+        H[Regex Diagram Linking]
+        I[Pydantic v2 Validation]
+        J[Individual Item Validation]
+    end
+
+    subgraph Output
+        K[Validated JSON in data/output/]
+        L[Organized Diagrams in data/output/diagrams/]
+    end
+
+    A --> B
+    B --> C
+    C --> D
+    C --> E
+    E --> F
+    F --> G
+    G --> H
+    D --> H
+    H --> I
+    I --> J
+    J --> K
+    J --> L
+```
 
 ## Project Structure
 
-```
+```text
 llama-pydantic-extraction/
 ├── main.py                          # Application entry point
-├── requirements.txt                 # Python dependencies
 ├── config/
 │   └── settings.py                  # Centralised configuration & env loading
 ├── src/
-│   ├── extractors/                  # LlamaCloud extraction logic
-│   ├── parsers/                     # PDF parsing & content normalisation
-│   ├── schemas/                     # Pydantic models for structured output
+│   ├── extractors/                  # LLM extraction logic & diagram linking
+│   ├── parsers/                     # PDF parsing (LlamaCloud integration)
+│   ├── schemas/                     # Pydantic models (MCQs & metadata)
 │   └── utils/                       # Shared helpers — logging, file I/O, async
 ├── scripts/                         # CLI scripts for batch ops & validation
 ├── data/
-│   ├── input/                       # Place source PDFs here
+│   ├── input/new/                   # Place source PDFs here
 │   └── output/                      # Validated JSON output lands here
-├── tests/
-│   ├── unit/                        # Fast, isolated unit tests
-│   └── integration/                 # End-to-end pipeline tests
-└── docs/                            # Additional documentation
+│       └── diagrams/                # Extracted images organized by PDF
+└── tests/                           # Unit and integration tests
 ```
 
 ## Getting Started
@@ -61,35 +103,32 @@ cp .env.example .env
 
 ```env
 LLAMA_CLOUD_API_KEY=llx-your-key-here
+LLM_MODEL=gpt-4o
 BATCH_SIZE=5
 MAX_RETRIES=3
-TIMEOUT=300
 LOG_LEVEL=INFO
 ```
 
-Additional settings can be tuned in `config/settings.py`.
-
 ## Usage
 
-Place your PDF files in the `data/input/` folder and run:
+### 1. Run the Full Pipeline
+Place your PDF files in the `data/input/new/` folder and run the main pipeline:
 
 ```bash
 python main.py
 ```
+Extracted, validated data will be written to `data/output/` as timestamped JSON files.
 
-Extracted, validated data will be written to `data/output/`.
+### 2. Utility Scripts
+The project includes several CLI utilities in the `scripts/` directory:
 
-## How It Works
-
-```
-PDF Files ──▶ LlamaCloud Parser ──▶ Raw JSON ──▶ Pydantic Validation ──▶ Structured Output
-              (src/parsers)         (src/extractors)   (src/schemas)         (data/output)
-```
-
-1. **Parse** — PDFs are sent to LlamaCloud for intelligent content extraction
-2. **Extract** — Raw parsed content is mapped to extraction targets
-3. **Validate** — Pydantic models enforce types, constraints, and defaults
-4. **Output** — Clean, validated JSON is written to `data/output/`
+| Command | Description |
+| :--- | :--- |
+| `python scripts/stats.py` | Display statistics of extracted questions and processing success. |
+| `python scripts/export_csv.py` | Flatten and export validated JSON results to a CSV file. |
+| `python scripts/validate_output.py` | Re-run Pydantic validation on all JSON files in the output directory. |
+| `python scripts/reprocess.py <file.pdf>` | Re-run parsing and extraction for a specific PDF. |
+| `python scripts/clean_output.py` | Archive or delete files in the output directory. |
 
 ## Testing
 
@@ -99,17 +138,14 @@ pytest
 
 # Unit tests only
 pytest tests/unit/
-
-# Integration tests only
-pytest tests/integration/
 ```
 
-## Contributing
+## Engineering Standards
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Commit your changes (`git commit -m "feat: add my feature"`)
-4. Push and open a Pull Request
+- **Pydantic v2**: Strict model enforcement with `model_dump()` and `ConfigDict`.
+- **Async First**: All I/O operations are non-blocking using `asyncio` and `httpx`.
+- **Surgical Validation**: Invalid questions are logged and skipped, ensuring one bad item doesn't fail a 100-item document.
+- **Resilience**: Exponential backoff retries for all external API dependencies.
 
 ## License
 
