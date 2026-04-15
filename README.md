@@ -1,4 +1,4 @@
-# llama-pydantic-extraction
+11# llama-pydantic-extraction
 
 Production-ready pipeline for extracting structured data from large PDF corpora. Combines LlamaCloud's intelligent parsing with Pydantic's type-safe validation to transform unstructured documents into validated Python objects at scale. Async processing, batch optimization, schema-driven extraction.
 
@@ -43,6 +43,12 @@ graph TD
         L[Organized Diagrams in data/output/diagrams/]
     end
 
+    subgraph "Observability & Resilience"
+        M[Centralized Logging]
+        N[Exponential Backoff Retries]
+        O[Validation Error Reports]
+    end
+
     A --> B
     B --> C
     C --> D
@@ -55,6 +61,14 @@ graph TD
     I --> J
     J --> K
     J --> L
+
+    %% Observability Connections
+    B -.-> M
+    G -.-> M
+    I -.-> M
+    N -.-> B
+    N -.-> G
+    O -.-> I
 ```
 
 ## Project Structure
