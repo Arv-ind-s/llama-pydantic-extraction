@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     )
 
     # Processing
+    llm_model: str = Field(
+        default="gpt-4o",
+        description="LLM model name for extraction (e.g. gpt-4o, gpt-4o-mini)"
+    )
     batch_size: int = Field(
         default=5,
         description="Number of PDFs to process in each batch"

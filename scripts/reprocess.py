@@ -25,15 +25,11 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-async def reprocess(filenames: list):
+async def reprocess_batch(client: AsyncLlamaCloud, filenames: list):
     """
-    Re-run the pipeline for specific PDF files.
-
-    Args:
-        filenames: List of PDF filenames (just the name, not full path).
+    Process a batch of files concurrently.
     """
-    client = AsyncLlamaCloud(api_key=settings.llama_cloud_api_key)
-
+    tasks = []
     for filename in filenames:
         pdf_path = NEW_PDF_DIR / filename
 
@@ -42,21 +38,45 @@ async def reprocess(filenames: list):
             continue
 
         logger.info(f"Reprocessing: {filename}")
+        
+        async def process_file(fname, path):
+            try:
+                parsed = await parse_single_pdf(client, path)
+                output_path = await extract_and_save(client, parsed)
+                return fname, output_path
+            except Exception as e:
+                logger.error(f"✗ Failed to reprocess {fname}: {e}")
+                return fname, None
 
-        try:
-            # Parse
-            parsed = await parse_single_pdf(client, pdf_path)
+        tasks.append(process_file(filename, pdf_path))
 
-            # Extract and save
-            output_path = await extract_and_save(client, parsed)
+    results = await asyncio.gather(*tasks)
+    return results
 
+
+async def reprocess(filenames: list):
+    """
+    Re-run the pipeline for specific PDF files in batches.
+    """
+    client = AsyncLlamaCloud(api_key=settings.llama_cloud_api_key)
+
+    success_count = 0
+    total = len(filenames)
+
+    for i in range(0, total, settings.batch_size):
+        batch = filenames[i : i + settings.batch_size]
+        logger.info(f"Reprocessing batch {i//settings.batch_size + 1}: {batch}")
+        
+        results = await reprocess_batch(client, batch)
+        
+        for fname, output_path in results:
             if output_path:
                 logger.info(f"✓ Saved → {output_path}")
+                success_count += 1
             else:
-                logger.warning(f"✗ Extraction failed for {filename}")
+                logger.warning(f"✗ Extraction failed for {fname}")
 
-        except Exception as e:
-            logger.error(f"✗ Failed to reprocess {filename}: {e}")
+    logger.info(f"Reprocessing complete: {success_count}/{total} succeeded")
 
 
 def main():

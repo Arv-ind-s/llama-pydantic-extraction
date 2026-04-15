@@ -58,23 +58,28 @@ async def run_pipeline():
     client = AsyncLlamaCloud(api_key=settings.llama_cloud_api_key)
 
     success_count = 0
-    for i, parsed in enumerate(parsed_results, 1):
-        logger.info(f"Extracting [{i}/{len(parsed_results)}]: {parsed['filename']}")
-        try:
-            output_path = await extract_and_save(client, parsed)
-            if output_path:
-                logger.info(f"✓ Saved → {output_path}")
+    # Process extractions in batches for concurrency
+    for i in range(0, len(parsed_results), settings.batch_size):
+        batch = parsed_results[i : i + settings.batch_size]
+        logger.info(f"Extracting batch {i//settings.batch_size + 1}: {[p['filename'] for p in batch]}")
+        
+        tasks = [extract_and_save(client, parsed) for parsed in batch]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for parsed, result in zip(batch, results):
+            if isinstance(result, Exception):
+                logger.error(f"✗ Failed {parsed['filename']}: {result}")
+            elif result:
+                logger.info(f"✓ Saved → {result}")
                 success_count += 1
             else:
                 logger.warning(f"✗ No output for {parsed['filename']}")
-        except Exception as e:
-            logger.error(f"✗ Failed {parsed['filename']}: {e}")
 
     # Summary
     elapsed = (datetime.now() - start_time).total_seconds()
     logger.info("=" * 60)
     logger.info("Pipeline Complete")
-    logger.info(f"  Processed: {success_count}/{len(parsed_results)} PDFs")
+    logger.info(f"  Processed: {success_count}/{len(parsed_results)} PDFs succeeded")
     logger.info(f"  Time:      {elapsed:.1f}s")
     logger.info(f"  Output:    {settings.output_dir}")
     logger.info("=" * 60)

@@ -4,21 +4,21 @@ Question extractor for PSC question bank PDFs.
 Takes raw markdown + image paths from the parser and uses an LLM
 to extract structured question data validated against the
 PSCQuestionExtraction Pydantic schema.
-
-Flow:
-    Parser output (markdown + images)
-        → LLM structured extraction
-        → Pydantic validation
-        → Diagram path linking
-        → PSCQuestionExtraction object
 """
 import json
 import re
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from pydantic import ValidationError
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 from config.settings import settings
 from src.schemas.question_schema import (
@@ -33,9 +33,6 @@ logger = get_logger(__name__)
 
 
 # --- Extraction prompt ---
-# This prompt is sent to the LLM along with the parsed markdown content.
-# It instructs the LLM to return structured JSON matching our schema.
-
 EXTRACTION_PROMPT = """You are an expert at extracting structured data from PSC (Public Service Commission) question bank documents.
 
 Given the following document content, extract ALL questions into a structured JSON format.
@@ -124,48 +121,34 @@ Document content:
 
 
 def build_extraction_prompt(markdown_content: str) -> str:
-    """
-    Build the full prompt by appending document content to the extraction template.
-
-    Args:
-        markdown_content: Parsed markdown from LlamaParse.
-
-    Returns:
-        Complete prompt string for the LLM.
-    """
     return EXTRACTION_PROMPT + markdown_content
 
 
+@retry(
+    stop=stop_after_attempt(settings.max_retries),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((asyncio.TimeoutError, Exception)),
+)
 async def extract_with_llm(client, markdown_content: str) -> Optional[Dict]:
     """
     Send parsed markdown to an LLM and get structured JSON back.
-
-    Uses LlamaCloud's inference API to extract structured data
-    from the document content.
-
-    Args:
-        client:           Authenticated AsyncLlamaCloud client.
-        markdown_content: Raw markdown content from parser.
-
-    Returns:
-        Parsed JSON dict from LLM response, or None if extraction fails.
+    Includes retry logic for reliability.
     """
     prompt = build_extraction_prompt(markdown_content)
 
     try:
-        # Use LlamaCloud's inference endpoint for structured extraction
         response = await client.inference.chat(
             messages=[
-                {"role": "system", "content": "You extract structured question data from PSC exam documents. Always respond with valid JSON only."},
+                {
+                    "role": "system",
+                    "content": "You extract structured question data from PSC exam documents. Always respond with valid JSON only.",
+                },
                 {"role": "user", "content": prompt},
             ],
-            model="gpt-4o",  # can be configured in settings later
+            model=settings.llm_model,
         )
 
-        # Extract the response text
         raw_text = response.choices[0].message.content.strip()
-
-        # Clean up the response — LLMs sometimes wrap JSON in markdown code blocks
         raw_text = strip_code_fences(raw_text)
 
         return json.loads(raw_text)
@@ -175,20 +158,10 @@ async def extract_with_llm(client, markdown_content: str) -> Optional[Dict]:
         return None
     except Exception as e:
         logger.error(f"LLM extraction failed: {e}")
-        return None
+        raise  # tenacity will catch this and retry
 
 
 def strip_code_fences(text: str) -> str:
-    """
-    Remove markdown code fences (```json ... ```) that LLMs sometimes add.
-
-    Args:
-        text: Raw LLM response text.
-
-    Returns:
-        Clean JSON string.
-    """
-    # Remove ```json ... ``` or ``` ... ```
     text = re.sub(r"^```(?:json)?\s*\n?", "", text)
     text = re.sub(r"\n?```\s*$", "", text)
     return text.strip()
@@ -200,45 +173,37 @@ def link_diagram_paths(
     pdf_filename: str,
 ) -> List[Dict]:
     """
-    Match downloaded diagram paths to their corresponding questions.
-
-    LlamaCloud saves images with filenames like 'page_1.jpg', 'image_1.png', etc.
-    This function maps them to questions based on page/image references
-    found in the markdown content.
-
-    Args:
-        questions:    List of question dicts from LLM extraction.
-        image_paths:  List of local file paths to downloaded images.
-        pdf_filename: Original PDF filename for logging.
-
-    Returns:
-        Updated questions list with diagram paths populated.
+    Match downloaded diagram paths to their corresponding questions using regex.
+    Prevents false positives (e.g. Q1 matching image_11.png).
     """
     if not image_paths:
         return questions
 
     logger.info(f"Linking {len(image_paths)} image(s) to questions in {pdf_filename}")
 
-    # Build a lookup of image filenames → full paths
     image_lookup = {Path(p).name: p for p in image_paths}
 
     for i, question in enumerate(questions):
-        # If the question has a diagram flag but no path, try to find a matching image
+        q_num = str(question.get("question_number", i + 1))
+        
+        # Regex to match exact question number in filename
+        # Matches "question_1.png", "q1.jpg", "page_1_image_1.png", but NOT "question_11.png"
+        q_pattern = re.compile(fr"(?:^|[^0-9]){re.escape(q_num)}(?:[^0-9]|$)", re.IGNORECASE)
+
         if question.get("has_question_diagram") and not question.get("question_diagram_path"):
-            # Look for an image named after the question number or index
-            q_num = question.get("question_number", i + 1)
             for img_name, img_path in image_lookup.items():
-                if str(q_num) in img_name or f"question_{q_num}" in img_name.lower():
+                if q_pattern.search(img_name) or f"question_{q_num}" in img_name.lower():
                     question["question_diagram_path"] = img_path
                     logger.debug(f"Linked diagram {img_name} → question {q_num}")
                     break
 
-        # Same logic for answer diagrams
         if question.get("has_answer_diagrams") and not question.get("answer_diagram_paths"):
             answer_paths = {}
             for option_key in question.get("answer_options", {}).keys():
+                # Pattern for answer specific diagrams e.g. "q1_a.png" or "ans_A_1.jpg"
+                a_pattern = re.compile(fr"ans(?:wer)?_{option_key}", re.IGNORECASE)
                 for img_name, img_path in image_lookup.items():
-                    if f"answer_{option_key}" in img_name.lower():
+                    if q_pattern.search(img_name) and a_pattern.search(img_name):
                         answer_paths[option_key] = img_path
                         break
             if answer_paths:
@@ -248,32 +213,15 @@ def link_diagram_paths(
 
 
 def validate_extraction(raw_data: Dict, pdf_filename: str) -> Optional[PSCQuestionExtraction]:
-    """
-    Validate raw LLM output against the PSCQuestionExtraction Pydantic schema.
-
-    Handles common edge cases:
-    - Missing optional fields (filled with defaults)
-    - Invalid enum values (logged and skipped per-question)
-    - Empty questions list (returns None)
-
-    Args:
-        raw_data:     Dict from LLM extraction.
-        pdf_filename: PDF filename for metadata and logging.
-
-    Returns:
-        Validated PSCQuestionExtraction object, or None if validation fails entirely.
-    """
     if not raw_data or "questions" not in raw_data:
         logger.error(f"No questions found in extraction output for {pdf_filename}")
         return None
 
-    # Enrich metadata with processing info
     metadata = raw_data.get("metadata", {})
     metadata["pdf_filename"] = pdf_filename
     metadata["extraction_date"] = datetime.now().isoformat()
     metadata["total_questions"] = len(raw_data["questions"])
 
-    # Validate questions one by one — skip invalid ones instead of failing the batch
     valid_questions = []
     processing_notes = []
 
@@ -287,7 +235,6 @@ def validate_extraction(raw_data: Dict, pdf_filename: str) -> Optional[PSCQuesti
             logger.warning(error_msg)
             processing_notes.append(error_msg)
 
-            # Log each specific validation error for debugging
             for error in e.errors():
                 field = " → ".join(str(loc) for loc in error["loc"])
                 logger.debug(f"  Field '{field}': {error['msg']}")
@@ -296,100 +243,50 @@ def validate_extraction(raw_data: Dict, pdf_filename: str) -> Optional[PSCQuesti
         logger.error(f"All questions failed validation for {pdf_filename}")
         return None
 
-    # Update metadata with validation results
     metadata["total_questions"] = len(valid_questions)
     if processing_notes:
         metadata.setdefault("processing_notes", []).extend(processing_notes)
 
-    skipped = len(raw_data["questions"]) - len(valid_questions)
-    if skipped:
-        logger.warning(f"{skipped} question(s) skipped due to validation errors in {pdf_filename}")
-
-    # Build the final validated extraction object
     try:
         extraction = PSCQuestionExtraction(
             questions=valid_questions,
             metadata=DocumentMetadata(**metadata),
         )
-        logger.info(
-            f"Validated {len(valid_questions)} question(s) from {pdf_filename}"
-        )
+        logger.info(f"Validated {len(valid_questions)} question(s) from {pdf_filename}")
         return extraction
     except ValidationError as e:
         logger.error(f"Top-level validation failed for {pdf_filename}: {e}")
         return None
 
 
-async def extract_from_parsed(
-    client,
-    parsed_result: Dict,
-) -> Optional[PSCQuestionExtraction]:
-    """
-    Full extraction pipeline for a single parsed PDF.
-
-    Steps:
-        1. Send markdown to LLM for structured extraction
-        2. Link downloaded diagram paths to questions
-        3. Validate against Pydantic schema
-        4. Return validated PSCQuestionExtraction
-
-    Args:
-        client:        Authenticated AsyncLlamaCloud client.
-        parsed_result: Dict from parser with 'filename', 'markdown', 'images' keys.
-
-    Returns:
-        Validated PSCQuestionExtraction, or None if extraction fails.
-    """
+async def extract_from_parsed(client, parsed_result: Dict) -> Optional[PSCQuestionExtraction]:
     filename = parsed_result["filename"]
     markdown = parsed_result["markdown"]
     images = parsed_result.get("images", [])
 
     logger.info(f"Starting extraction for {filename}")
 
-    # Step 1: LLM structured extraction
     raw_data = await extract_with_llm(client, markdown)
     if raw_data is None:
         return None
 
-    # Step 2: Link diagram paths to questions
     if images and "questions" in raw_data:
-        raw_data["questions"] = link_diagram_paths(
-            raw_data["questions"], images, filename
-        )
+        raw_data["questions"] = link_diagram_paths(raw_data["questions"], images, filename)
 
-    # Step 3: Validate and return
     return validate_extraction(raw_data, filename)
 
 
-async def extract_and_save(
-    client,
-    parsed_result: Dict,
-    output_dir: Path = None,
-) -> Optional[Path]:
-    """
-    Extract questions from a parsed PDF and save the result as JSON.
+async def extract_and_save(client, parsed_result: Dict, output_dir: Path = None) -> Optional[Path]:
+    try:
+        extraction = await extract_from_parsed(client, parsed_result)
+        if extraction is None:
+            return None
 
-    Convenience function that combines extraction + file output.
+        stem = Path(parsed_result["filename"]).stem
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"{stem}_{timestamp}.json"
 
-    Args:
-        client:        Authenticated AsyncLlamaCloud client.
-        parsed_result: Dict from parser with 'filename', 'markdown', 'images' keys.
-        output_dir:    Where to save JSON. Defaults to settings.output_dir.
-
-    Returns:
-        Path to the saved JSON file, or None if extraction failed.
-    """
-    extraction = await extract_from_parsed(client, parsed_result)
-
-    if extraction is None:
-        logger.error(f"Extraction failed for {parsed_result['filename']} — no output saved")
+        return save_json(extraction, output_filename, output_dir)
+    except Exception as e:
+        logger.error(f"Failed to process extraction for {parsed_result['filename']}: {e}")
         return None
-
-    # Generate output filename: e.g. "psc_2024_20260214_163000.json"
-    stem = Path(parsed_result["filename"]).stem
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filename = f"{stem}_{timestamp}.json"
-
-    # Save the validated extraction as JSON
-    filepath = save_json(extraction, output_filename, output_dir)
-    return filepath
