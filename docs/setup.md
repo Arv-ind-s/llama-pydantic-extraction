@@ -9,8 +9,8 @@
 ## Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/Arv-ind-s/llama-pydantic-extraction.git
-cd llama-pydantic-extraction
+git clone https://github.com/Arv-ind-s/AsyncDoc-AI.git
+cd AsyncDoc-AI
 ```
 
 ## Step 2: Create a Virtual Environment

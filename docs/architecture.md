@@ -200,7 +200,7 @@ Provides timing, progress logging, and proper exit codes (`0` = success, `1` = f
 ## Directory Structure
 
 ```
-llama-pydantic-extraction/
+AsyncDoc-AI/
 ├── main.py                          # Pipeline entry point
 ├── requirements.txt                 # Python dependencies
 ├── .env                             # API keys (gitignored)

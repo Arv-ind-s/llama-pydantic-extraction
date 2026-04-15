@@ -1,4 +1,4 @@
-# llama-pydantic-extraction
+# AsyncDoc-AI
 
 Production-ready pipeline for extracting structured data from large PDF corpora. Combines LlamaCloud's intelligent parsing with Pydantic's type-safe validation to transform unstructured documents into validated Python objects at scale. Async processing, batch optimization, schema-driven extraction.
 
@@ -74,7 +74,7 @@ graph TD
 ## Project Structure
 
 ```text
-llama-pydantic-extraction/
+AsyncDoc-AI/
 ├── main.py                          # Application entry point
 ├── config/
 │   └── settings.py                  # Centralised configuration & env loading
@@ -101,8 +101,8 @@ llama-pydantic-extraction/
 ### Installation
 
 ```bash
-git clone https://github.com/Arv-ind-s/llama-pydantic-extraction.git
-cd llama-pydantic-extraction
+git clone https://github.com/Arv-ind-s/AsyncDoc-AI.git
+cd AsyncDoc-AI
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```

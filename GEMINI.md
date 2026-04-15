@@ -1,6 +1,6 @@
-# Gemini CLI - Project Context: llama-pydantic-extraction
+# Gemini CLI - Project Context: AsyncDoc-AI
 
-This document provides essential context and instructions for AI agents (like Gemini CLI) to understand and interact with the `llama-pydantic-extraction` codebase.
+This document provides essential context and instructions for AI agents (like Gemini CLI) to understand and interact with the `AsyncDoc-AI` codebase.
 
 ## Project Overview
 

@@ -1,7 +1,7 @@
-# Project Specification: llama-pydantic-extraction
+# Project Specification: AsyncDoc-AI
 
 ## 1. Overview
-`llama-pydantic-extraction` is a production-ready pipeline designed to transform unstructured PDF question banks into validated, structured JSON data. It specifically targets Multiple Choice Questions (MCQs) from PSC (Public Service Commission) exam documents, which often feature complex layouts, multi-column text, and embedded diagrams.
+`AsyncDoc-AI` is a production-ready pipeline designed to transform unstructured PDF question banks into validated, structured JSON data. It specifically targets Multiple Choice Questions (MCQs) from PSC (Public Service Commission) exam documents, which often feature complex layouts, multi-column text, and embedded diagrams.
 
 ### 1.1 Goals
 - **High Fidelity Parsing:** Accurately extract text and structural elements from complex PDFs.

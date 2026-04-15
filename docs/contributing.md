@@ -1,6 +1,6 @@
 # Contributing Guidelines
 
-Thank you for your interest in contributing to **llama-pydantic-extraction**! This guide helps you get started.
+Thank you for your interest in contributing to **AsyncDoc-AI**! This guide helps you get started.
 
 ---
 
@@ -9,8 +9,8 @@ Thank you for your interest in contributing to **llama-pydantic-extraction**! Th
 1. **Fork** the repository on GitHub.
 2. **Clone** your fork locally:
    ```bash
-   git clone https://github.com/<your-username>/llama-pydantic-extraction.git
-   cd llama-pydantic-extraction
+   git clone https://github.com/<your-username>/AsyncDoc-AI.git
+   cd AsyncDoc-AI
    ```
 3. **Set up** the development environment (see [Setup Guide](setup.md)).
 4. **Create a feature branch:**

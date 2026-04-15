@@ -1,8 +1,8 @@
 # Project Overview
 
-## What is llama-pydantic-extraction?
+## What is AsyncDoc-AI?
 
-**llama-pydantic-extraction** is a Python pipeline for extracting structured multiple-choice question (MCQ) data from PSC (Public Service Commission) question bank PDFs. It combines LlamaCloud's AI-powered document parsing with Pydantic's type-safe schema validation to transform unstructured PDFs into clean, validated JSON output.
+**AsyncDoc-AI** is a Python pipeline for extracting structured multiple-choice question (MCQ) data from PSC (Public Service Commission) question bank PDFs. It combines LlamaCloud's AI-powered document parsing with Pydantic's type-safe schema validation to transform unstructured PDFs into clean, validated JSON output.
 
 ## Problem Statement
 
